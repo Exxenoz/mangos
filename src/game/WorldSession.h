@@ -514,6 +514,9 @@ class MANGOS_DLL_SPEC WorldSession
         void HandleDismissControlledVehicle(WorldPacket &recv_data);
         void HandleMoveTimeSkippedOpcode(WorldPacket &recv_data);
 
+        void HandleEnterPlayerVehicle(WorldPacket &recv_data);
+        void HandleRequestVehicleExit(WorldPacket &recv_data);
+
         void HandleRequestRaidInfoOpcode( WorldPacket & recv_data );
 
         void HandleGroupInviteOpcode(WorldPacket& recvPacket);

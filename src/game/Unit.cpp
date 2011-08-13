@@ -184,6 +184,7 @@ void GlobalCooldownMgr::CancelGlobalCooldown(SpellEntry const* spellInfo)
 Unit::Unit() :
     i_motionMaster(this), m_ThreatManager(this), m_HostileRefManager(this),
     m_charmInfo(NULL),
+    m_vehicle(NULL),
     m_vehicleInfo(NULL),
     movespline(new Movement::MoveSpline())
 {
@@ -9384,6 +9385,27 @@ void CharmInfo::InitEmptyActionBar()
         SetActionBar(x,0,ACT_PASSIVE);
 }
 
+void CharmInfo::InitVehicleCreateSpells()
+{
+    for (uint32 x = ACTION_BAR_INDEX_START; x < ACTION_BAR_INDEX_END; ++x)
+        SetActionBar(x, 0, ActiveStates(0x8 + x));
+
+    for (uint32 x = 0; x < CREATURE_MAX_SPELLS; ++x)
+    {
+        uint32 spellId = ((Creature*)m_unit)->m_spells[x];
+
+        if (!spellId)
+            continue;
+
+        if (IsPassiveSpell(spellId))
+        {
+            m_unit->CastSpell(m_unit, spellId, true);
+        }
+        else
+            PetActionBar[x].SetAction(spellId);
+    }
+}
+
 void CharmInfo::InitPossessCreateSpells()
 {
     InitEmptyActionBar();                                   //charm action bar
@@ -10416,6 +10438,39 @@ void Unit::SetPhaseMask(uint32 newPhaseMask, bool update)
     WorldObject::SetPhaseMask(newPhaseMask, update);
 }
 
+bool Unit::UpdatePosition(float x, float y, float z, float orientation, bool teleport)
+{
+    // prevent crash when a bad coord is sent by the client
+    if (!MaNGOS::IsValidMapCoord(x, y, z, orientation))
+    {
+        DEBUG_LOG("Unit::UpdatePosition(%f, %f, %f, %f, %d) .. bad coordinates for unit %d!", x, y, z, orientation, teleport, GetGUIDLow());
+        return false;
+    }
+
+    bool turn = GetOrientation() != orientation;
+    bool relocate = (teleport || GetPositionX() != x || GetPositionY() != y || GetPositionZ() != z);
+
+    if (turn)
+        RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TURNING);
+
+    if (relocate)
+    {
+        RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_MOVE);
+
+        if (GetTypeId() == TYPEID_PLAYER)
+            GetMap()->PlayerRelocation((Player*)this, x, y, z, orientation);
+        else
+            GetMap()->CreatureRelocation((Creature*)this, x, y, z, orientation);
+    }
+    else if (turn)
+        SetOrientation(orientation);
+
+    if ((relocate || turn) && IsVehicle())
+        GetVehicleInfo()->RelocatePassengers(x, y, z, orientation);
+
+    return relocate || turn;
+}
+
 void Unit::NearTeleportTo( float x, float y, float z, float orientation, bool casting /*= false*/ )
 {
     DisableSpline();
@@ -10440,6 +10495,57 @@ void Unit::NearTeleportTo( float x, float y, float z, float orientation, bool ca
             if (MovementGenerator *movgen = c->GetMotionMaster()->top())
                 movgen->Reset(*c);
     }
+}
+
+void Unit::MonsterMoveTransport(WorldObject* pTransport, SplineType type, SplineFlags flags, uint32 moveTime, ...)
+{
+    va_list vargs;
+    va_start(vargs, moveTime);
+
+    WorldPacket data(SMSG_MONSTER_MOVE_TRANSPORT, 60);
+    data << GetPackGUID();
+    data << pTransport->GetPackGUID();
+    data << uint8(0);                                       // transport seat
+    data << uint8(0);                                       // new in 3.1
+    data << float(pTransport->GetPositionX());
+    data << float(pTransport->GetPositionY());
+    data << float(pTransport->GetPositionZ());
+    data << uint32(WorldTimer::getMSTime());
+    data << uint8(type);                                    // spline type
+
+    switch (type)
+    {
+        case SPLINETYPE_NORMAL:                             // normal packet
+            break;
+        case SPLINETYPE_STOP:                               // stop packet (raw pos?)
+            va_end(vargs);
+            SendMessageToSet(&data, true);
+            return;
+        case SPLINETYPE_FACINGSPOT:                         // facing spot
+            data << float(va_arg(vargs,double));
+            data << float(va_arg(vargs,double));
+            data << float(va_arg(vargs,double));
+            break;
+        case SPLINETYPE_FACINGTARGET:
+            data << uint64(va_arg(vargs,uint64));
+            break;
+        case SPLINETYPE_FACINGANGLE:
+            data << float(va_arg(vargs,double));            // facing angle
+            break;
+    }
+
+    va_end(vargs);
+
+    data << uint32(flags);
+
+    data << uint32(moveTime);                               // Time in between points
+    data << uint32(1);                                      // 1 single waypoint
+
+    data << float(m_movementInfo.GetTransportPos()->x);
+    data << float(m_movementInfo.GetTransportPos()->y);
+    data << float(m_movementInfo.GetTransportPos()->z);
+
+    SendMessageToSet(&data, true);
 }
 
 void Unit::MonsterMoveWithSpeed(float x, float y, float z, float speed)
@@ -10799,7 +10905,7 @@ void Unit::SetVehicleId(uint32 entry)
         VehicleEntry const* ventry = sVehicleStore.LookupEntry(entry);
         MANGOS_ASSERT(ventry != NULL);
 
-        m_vehicleInfo = new VehicleInfo(ventry);
+        m_vehicleInfo = new VehicleInfo(ventry, this);
         m_updateFlag |= UPDATEFLAG_VEHICLE;
     }
     else
@@ -10815,6 +10921,142 @@ void Unit::SetVehicleId(uint32 entry)
         data << uint32(entry);
         SendMessageToSet(&data, true);
     }
+}
+
+void Unit::EnterVehicle(Unit* pVehicle)
+{
+    DEBUG_LOG("[EnterVehicle]");
+
+    if (!pVehicle)
+        return;
+
+    // Death...
+    if (!isAlive())
+        return;
+
+    // We are already boarded...
+    if (GetVehicle())
+        return;
+
+    VehicleInfo* vehicleInfo = pVehicle->GetVehicleInfo();
+
+    // That's not a vehicle
+    if (!vehicleInfo)
+        return;
+
+    // There is no empty seat
+    if (!vehicleInfo->AddPassenger(GetObjectGuid()))
+        return;
+
+    InterruptNonMeleeSpells(false);
+    RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
+    RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT);
+
+    addUnitState(UNIT_STAT_ON_VEHICLE);
+
+    VehicleSeatEntry const* seatInfo = vehicleInfo->GetSeatEntry(GetObjectGuid());
+    MANGOS_ASSERT(seatInfo != NULL);
+
+    m_movementInfo.AddMovementFlag(MOVEFLAG_ONTRANSPORT);
+    m_movementInfo.SetTransportData(pVehicle->GetObjectGuid(), seatInfo->m_attachmentOffsetX, seatInfo->m_attachmentOffsetY, seatInfo->m_attachmentOffsetZ, seatInfo->m_passengerYaw, WorldTimer::getMSTime(), 0); // ToDo: Replace 0 with the real seatId
+
+    // If this seat has flag unattackable or if the player can control this seat
+    if (seatInfo->m_flags & SEAT_FLAG_UNATTACKABLE || seatInfo->m_flags & SEAT_FLAG_CAN_CONTROL)
+        SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+
+    if (GetTypeId() == TYPEID_PLAYER)
+    {
+        Player* pPlayer = (Player*)this;
+        pPlayer->GetCamera().SetView(pVehicle);
+
+        DEBUG_LOG("SeatId: %u CAN_CONTROL: %u FLAGS: %u", seatInfo->m_ID, uint8(seatInfo->m_flags & SEAT_FLAG_CAN_CONTROL), seatInfo->m_flags);
+
+        // Remove our pet and save it
+        pPlayer->RemovePet(PET_SAVE_AS_CURRENT);
+
+        if (seatInfo->m_flags & SEAT_FLAG_CAN_CONTROL)
+        {
+            DEBUG_LOG("[CAN_CONTROL_SEAT]");
+            SetCharm(pVehicle);
+            pVehicle->addUnitState(UNIT_STAT_CONTROLLED);
+            pVehicle->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED);
+            pVehicle->setFaction(getFaction());
+
+            if (CharmInfo* charmInfo = pVehicle->InitCharmInfo(pVehicle))
+                charmInfo->InitVehicleCreateSpells();
+
+            pPlayer->SetMover(pVehicle);
+            pPlayer->SetClientControl(pVehicle, 1);
+            pPlayer->VehicleSpellInitialize();
+        }
+
+        WorldPacket data2(SMSG_ON_CANCEL_EXPECTED_RIDE_VEHICLE_AURA);
+        pPlayer->GetSession()->SendPacket(&data2);
+
+        data2.Initialize(SMSG_BREAK_TARGET, 8);
+        data2 << pVehicle->GetPackGUID();
+        pPlayer->GetSession()->SendPacket(&data2);
+    }
+
+    MonsterMoveTransport(pVehicle, SPLINETYPE_FACINGANGLE, SPLINEFLAG_UNKNOWN5, 0, 0.0f);
+
+    // Set our vehicle :]
+    m_vehicle = pVehicle;
+}
+
+void Unit::ExitVehicle()
+{
+    DEBUG_LOG("[Exit Vehicle]");
+
+    Unit* pVehicle = GetVehicle();
+
+    if (!pVehicle)
+        return;
+
+    VehicleInfo* vehicleInfo = pVehicle->GetVehicleInfo();
+
+    if (!vehicleInfo)
+        return;
+
+    // some SPELL_AURA_CONTROL_VEHICLE auras have a dummy effect on the player - remove them
+    RemoveAurasDueToSpell(SPELL_AURA_CONTROL_VEHICLE);
+
+    VehicleSeatEntry const* seatInfo = vehicleInfo->GetSeatEntry(GetObjectGuid());
+    MANGOS_ASSERT(seatInfo != NULL);
+
+    vehicleInfo->RemovePassenger(ObjectGuid());
+
+    clearUnitState(UNIT_STAT_ON_VEHICLE);
+
+    m_movementInfo.ClearTransportData();
+    m_movementInfo.RemoveMovementFlag(MOVEFLAG_ONTRANSPORT);
+
+    if (seatInfo->m_flags & SEAT_FLAG_UNATTACKABLE || seatInfo->m_flags & SEAT_FLAG_CAN_CONTROL)
+        RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_NON_ATTACKABLE);
+
+    if (GetTypeId() == TYPEID_PLAYER)
+    {
+        Player* pPlayer = (Player*)this;
+        pPlayer->GetCamera().ResetView();
+
+        if (seatInfo->m_flags & SEAT_FLAG_CAN_CONTROL)
+        {
+            SetCharm(NULL);
+            pVehicle->clearUnitState(UNIT_STAT_CONTROLLED);
+            pVehicle->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED);
+            pVehicle->setFaction(((Creature*)pVehicle)->GetCreatureInfo()->faction_A);
+
+            pPlayer->SetMover(NULL);
+            pPlayer->SetClientControl(pVehicle, 0);
+            pPlayer->RemovePetActionBar();
+        }
+
+        // Resummon our pet :)
+        pPlayer->ResummonPetTemporaryUnSummonedIfAny();
+    }
+
+    // Set vehicle pointer to NULL
+    m_vehicle = NULL;
 }
 
 void Unit::UpdateSplineMovement(uint32 t_diff)

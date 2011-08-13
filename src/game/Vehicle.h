@@ -26,14 +26,40 @@
 #include "SharedDefines.h"
 
 struct VehicleEntry;
+struct VehicleSeatEntry;
+
+struct VehicleSeat
+{
+    ObjectGuid passengerGuid;
+    VehicleSeatEntry const* vehicleSeatEntry;
+};
+
+typedef std::map<uint32, VehicleSeat> VehicleSeatMap;
 
 class VehicleInfo
 {
-        VehicleEntry const* m_vehicleEntry;
     public:
-        explicit VehicleInfo(VehicleEntry const* entry);
+        explicit VehicleInfo(VehicleEntry const* entry, Unit* vehicle);
 
         VehicleEntry const* GetEntry() const { return m_vehicleEntry; }
+        VehicleSeatEntry const* GetSeatEntry(ObjectGuid passengerGuid);
+        Unit* GetVehicle() { return m_vehicle; }
+
+        bool AddPassenger(ObjectGuid passengerGuid, uint32 seatId = 0);
+        void RelocatePassengers(float x, float y, float z, float ang);
+        void RemoveAllPassengers() { for (VehicleSeatMap::iterator itr = m_vehicleSeats.begin(); itr != m_vehicleSeats.end(); ++itr) { itr->second.passengerGuid.Clear(); } }
+        void RemovePassenger(ObjectGuid passengerGuid);
+
+        void FillPassengerGuidList(std::list<ObjectGuid>& list);
+        uint32 GetNextEmptyUsableSeatId();
+
+        bool IsSeatAvailable(uint32 seatId) { return m_vehicleSeats.find(seatId) != m_vehicleSeats.end(); }
+        ObjectGuid GetPassengerGuid(uint32 seatId) { return (IsSeatAvailable(seatId)) ? m_vehicleSeats[seatId].passengerGuid : ObjectGuid(); }
+
+    private:
+        VehicleEntry const* m_vehicleEntry;
+        VehicleSeatMap m_vehicleSeats;
+        Unit* m_vehicle;
 };
 
 #endif

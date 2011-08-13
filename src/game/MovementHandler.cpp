@@ -421,6 +421,43 @@ void WorldSession::HandleDismissControlledVehicle(WorldPacket &recv_data)
     _player->m_movementInfo = mi;
 }
 
+void WorldSession::HandleEnterPlayerVehicle(WorldPacket& recv_data)
+{
+    DEBUG_LOG("WORLD: Received CMSG_RIDE_VEHICLE_INTERACT");
+    recv_data.hexlike();
+
+    ObjectGuid guid;
+    recv_data >> guid;
+
+    Player* player = sObjectMgr.GetPlayer(guid);
+
+    if (!player)
+        return;
+
+    if (!GetPlayer()->IsInSameRaidWith(player))
+        return;
+
+    if (!GetPlayer()->IsWithinDistInMap(player, INTERACTION_DISTANCE))
+        return;
+
+    if (player->GetTransport())
+        return;
+
+    Unit* pVehicle = player->GetVehicle();
+
+    if (!pVehicle)
+        return;
+
+    GetPlayer()->EnterVehicle(pVehicle);
+}
+
+void WorldSession::HandleRequestVehicleExit(WorldPacket &recv_data)
+{
+    DEBUG_LOG("WORLD: Received CMSG_REQUEST_VEHICLE_EXIT");
+
+    GetPlayer()->ExitVehicle();
+}
+
 void WorldSession::HandleMountSpecialAnimOpcode(WorldPacket& /*recvdata*/)
 {
     //DEBUG_LOG("WORLD: Recvd CMSG_MOUNTSPECIAL_ANIM");
@@ -606,6 +643,9 @@ void WorldSession::HandleMoverRelocation(MovementInfo& movementInfo)
     else                                                    // creature charmed
     {
         if (mover->IsInWorld())
-            mover->GetMap()->CreatureRelocation((Creature*)mover, movementInfo.GetPos()->x, movementInfo.GetPos()->y, movementInfo.GetPos()->z, movementInfo.GetPos()->o);
+        {
+            mover->m_movementInfo = movementInfo;
+            mover->UpdatePosition(movementInfo.GetPos()->x, movementInfo.GetPos()->y, movementInfo.GetPos()->z, movementInfo.GetPos()->o);
+        }
     }
 }

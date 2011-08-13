@@ -8160,22 +8160,9 @@ void Aura::HandleAuraControlVehicle(bool apply, bool Real)
         return;
 
     if (apply)
-    {
-        if (caster->GetTypeId() == TYPEID_PLAYER)
-            ((Player*)caster)->RemovePet(PET_SAVE_AS_CURRENT);
-
-        //caster->EnterVehicle(target);
-    }
+        caster->EnterVehicle(target);
     else
-    {
-        // some SPELL_AURA_CONTROL_VEHICLE auras have a dummy effect on the player - remove them
-        caster->RemoveAurasDueToSpell(GetId());
-
-        //caster->ExitVehicle();
-
-        if (caster->GetTypeId() == TYPEID_PLAYER)
-            ((Player*)caster)->ResummonPetTemporaryUnSummonedIfAny();
-    }
+        caster->ExitVehicle();
 }
 
 void Aura::HandleAuraAddMechanicAbilities(bool apply, bool Real)
