@@ -312,6 +312,19 @@ struct WeatherZoneChances
     WeatherSeasonChances data[WEATHER_SEASONS];
 };
 
+struct DungeonEncounter
+{
+    DungeonEncounter(DungeonEncounterEntry const* _dbcEntry, EncounterCreditType _creditType, uint32 _creditEntry, uint32 _lastEncounterDungeon)
+        : dbcEntry(_dbcEntry), creditType(_creditType), creditEntry(_creditEntry), lastEncounterDungeon(_lastEncounterDungeon) { }
+    DungeonEncounterEntry const* dbcEntry;
+    EncounterCreditType creditType;
+    uint32 creditEntry;
+    uint32 lastEncounterDungeon;
+};
+
+typedef std::multimap<uint32, DungeonEncounter const*> DungeonEncounterMap;
+typedef std::pair<DungeonEncounterMap::const_iterator, DungeonEncounterMap::const_iterator> DungeonEncounterMapBounds;
+
 struct GraveYardData
 {
     uint32 safeLocId;
@@ -331,7 +344,7 @@ enum ConditionType
     CONDITION_TEAM                  = 6,                    // player_team  0,      (469 - Alliance 67 - Horde)
     CONDITION_SKILL                 = 7,                    // skill_id     skill_value
     CONDITION_QUESTREWARDED         = 8,                    // quest_id     0
-    CONDITION_QUESTTAKEN            = 9,                    // quest_id     0,      for condition true while quest active.
+    CONDITION_QUESTTAKEN            = 9,                    // quest_id     0,1,2   for condition true while quest active (0 any state, 1 if quest incomplete, 2 if quest completed).
     CONDITION_AD_COMMISSION_AURA    = 10,                   // 0            0,      for condition true while one from AD commission aura active
     CONDITION_NO_AURA               = 11,                   // spell_id     effindex
     CONDITION_ACTIVE_GAME_EVENT     = 12,                   // event_id     0
@@ -641,7 +654,8 @@ class ObjectMgr
         void LoadCreatureModelRace();
         void LoadEquipmentTemplates();
         void LoadGameObjectLocales();
-        void LoadGameobjects();
+        void LoadGameObjects();
+        void LoadGameObjectAddon();
         void LoadItemPrototypes();
         void LoadItemConverts();
         void LoadItemExpireConverts();
@@ -652,6 +666,7 @@ class ObjectMgr
         void LoadPageTextLocales();
         void LoadGossipMenuItemsLocales();
         void LoadPointOfInterestLocales();
+        void LoadInstanceEncounters();
         void LoadInstanceTemplate();
         void LoadWorldTemplate();
         void LoadMailLevelRewards();
@@ -1007,6 +1022,11 @@ class ObjectMgr
             return m_ItemRequiredTarget.equal_range(uiItemEntry);
         }
 
+        DungeonEncounterMapBounds GetDungeonEncounterBounds(uint32 creditEntry) const
+        {
+            return m_DungeonEncounters.equal_range(creditEntry);
+        }
+
         GossipMenusMapBounds GetGossipMenusMapBounds(uint32 uiMenuId) const
         {
             return m_mGossipMenusMap.equal_range(uiMenuId);
@@ -1170,6 +1190,7 @@ class ObjectMgr
         MangosStringLocaleMap mMangosStringLocaleMap;
         GossipMenuItemsLocaleMap mGossipMenuItemsLocaleMap;
         PointOfInterestLocaleMap mPointOfInterestLocaleMap;
+        DungeonEncounterMap m_DungeonEncounters;
 
         // Storage for Conditions. First element (index 0) is reserved for zero-condition (nothing required)
         typedef std::vector<PlayerCondition> ConditionStore;

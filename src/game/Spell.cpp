@@ -1574,6 +1574,8 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
                 case 59870:                                 // Glare of the Tribunal (h) (Halls of Stone)
                 case 64218:                                 // Overcharge
                 case 68950:                                 // Fear
+                case 68912:                                 // Wailing Souls (FoS)
+                case 69048:                                 // Mirrored Soul (FoS)
                     unMaxTargets = 1;
                     break;
                 case 28542:                                 // Life Drain
@@ -2921,7 +2923,7 @@ void Spell::cancel()
                         unit->RemoveAurasByCasterSpell(m_spellInfo->Id, m_caster->GetObjectGuid());
 
                     // prevent other effects applying if spell is already interrupted
-                    // i.e. if effects have different targets and it was interrupted on one of them when 
+                    // i.e. if effects have different targets and it was interrupted on one of them when
                     // haven't yet applied to another
                     ihit->processed = true;
                 }
@@ -3236,8 +3238,8 @@ void Spell::cast(bool skipCheck)
         m_spellState = SPELL_STATE_DELAYED;
         SetDelayStart(0);
 
-        // on spell cast end proc, 
-        // critical hit related part is currently done on hit so proc there, 
+        // on spell cast end proc,
+        // critical hit related part is currently done on hit so proc there,
         // 0 damage since any damage based procs should be on hit
         // 0 victim proc since there is no victim proc dependent on successfull cast for caster
         m_caster->ProcDamageAndSpell(procTarget, m_procAttacker, 0, PROC_EX_CAST_END, 0, m_attackType, m_spellInfo);
@@ -3608,6 +3610,11 @@ void Spell::finish(bool ok)
     // Stop Attack for some spells
     if( m_spellInfo->Attributes & SPELL_ATTR_STOP_ATTACK_TARGET )
         m_caster->AttackStop();
+
+    // update encounter state if needed
+    Map *map = m_caster->GetMap();
+    if (map->IsDungeon())
+        ((DungeonMap*)map)->GetPersistanceState()->UpdateEncounterState(ENCOUNTER_CREDIT_CAST_SPELL, m_spellInfo->Id);
 }
 
 void Spell::SendCastResult(SpellCastResult result)
@@ -4668,9 +4675,9 @@ SpellCastResult Spell::CheckCast(bool strict)
 
         // totem immunity for channeled spells(needs to be before spell cast)
         // spell attribs for player channeled spells
-        if ((m_spellInfo->AttributesEx & SPELL_ATTR_EX_UNK14) 
-            && (m_spellInfo->AttributesEx5 & SPELL_ATTR_EX5_UNK13) 
-            && target->GetTypeId() == TYPEID_UNIT 
+        if ((m_spellInfo->AttributesEx & SPELL_ATTR_EX_UNK14)
+            && (m_spellInfo->AttributesEx5 & SPELL_ATTR_EX5_UNK13)
+            && target->GetTypeId() == TYPEID_UNIT
             && ((Creature*)target)->IsTotem())
             return SPELL_FAILED_IMMUNE;
 
@@ -5974,7 +5981,9 @@ SpellCastResult Spell::CheckRange(bool strict)
     switch(m_spellInfo->rangeIndex)
     {
         // self cast doesn't need range checking -- also for Starshards fix
+        // spells that can be cast anywhere also need no check
         case SPELL_RANGE_IDX_SELF_ONLY:
+        case SPELL_RANGE_IDX_ANYWHERE:
             return SPELL_CAST_OK;
         // combat range spells are treated differently
         case SPELL_RANGE_IDX_COMBAT:
@@ -6823,7 +6832,7 @@ bool Spell::CheckTarget( Unit* target, SpellEffectIndex eff )
             // player far away, maybe his corpse near?
             if(target != m_caster && !target->IsWithinLOSInMap(m_caster))
             {
-                if (m_targets.getCorpseTargetGuid())
+                if (!m_targets.getCorpseTargetGuid())
                     return false;
 
                 Corpse *corpse = m_caster->GetMap()->GetCorpse(m_targets.getCorpseTargetGuid());
