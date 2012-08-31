@@ -32,7 +32,7 @@ void WorldSession::HandleDismissControlledVehicle(WorldPacket& recv_data)
     recv_data.hexlike();
 
     ObjectGuid guid;
-    MovementInfo mi;
+    MovementAndPositionInfo mi;
 
     recv_data >> guid.ReadAsPacked();
     recv_data >> mi;
