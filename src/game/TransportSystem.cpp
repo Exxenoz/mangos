@@ -111,6 +111,34 @@ void TransportBase::UpdateGlobalPositionOf(WorldObject* passenger, float lx, flo
     // ToDo: Add passenger relocation for MO transports
 }
 
+void TransportBase::BoardPassenger(WorldObject* passenger, float lx, float ly, float lz, float lo, uint8 seat)
+{
+    TransportInfo* transportInfo = new TransportInfo(passenger, this, lx, ly, lz, lo, seat);
+
+    // Insert our new passenger :D
+    m_passengers.insert(PassengerMap::value_type(passenger, transportInfo));
+
+    // The passenger needs fast access to transportInfo
+    passenger->SetTransportInfo(transportInfo);
+}
+
+void TransportBase::UnBoardPassenger(WorldObject* passenger)
+{
+    PassengerMap::const_iterator itr = m_passengers.find(passenger);
+
+    if (itr == m_passengers.end())
+        return;
+
+    // Set passengers transportInfo to NULL
+    passenger->SetTransportInfo(NULL);
+
+    // Delete transportInfo
+    delete itr->second;
+
+    // Unboard finally :)
+    m_passengers.erase(itr);
+}
+
 // This rotates the vector (lx, ly) by transporter->orientation
 void TransportBase::RotateLocalPosition(float lx, float ly, float& rx, float& ry) const
 {

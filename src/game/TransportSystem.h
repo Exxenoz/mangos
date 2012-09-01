@@ -59,7 +59,11 @@ class TransportBase
         void UpdateGlobalPositions();
         void UpdateGlobalPositionOf(WorldObject* passenger, float lx, float ly, float lz, float lo) const;
 
+        void BoardPassenger(WorldObject* passenger, float lx, float ly, float lz, float lo, uint8 seat);
+        void UnBoardPassenger(WorldObject* passenger);
+
         WorldObject* GetOwner() const { return m_owner; }
+        PassengerMap const& GetPassengers() const { return m_passengers; }
 
         // Helper functions to calculate positions
         void RotateLocalPosition(float lx, float ly, float& rx, float& ry) const;
@@ -95,7 +99,8 @@ class TransportInfo
         ObjectGuid GetTransportGuid() const { return m_transport->GetOwner()->GetObjectGuid(); }
 
         // Required for chain-updating (passenger on transporter on transporter)
-        bool IsOnVehicle() const { return m_transport->GetOwner()->GetTypeId() == TYPEID_PLAYER || m_transport->GetOwner()->GetTypeId() == TYPEID_UNIT; }
+        bool IsOnVehicle() const { return GetTransportGuid().IsUnit(); }
+        bool IsOnMOTransport() const { return GetTransportGuid().IsMOTransport(); }
 
         // Get local position and seat
         uint8 GetTransportSeat() const { return m_seat; }
