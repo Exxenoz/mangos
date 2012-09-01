@@ -28,16 +28,15 @@
 class Transport : public GameObject
 {
     public:
-        explicit Transport();
+        static Transport* Load(Map * map, uint32 entry, const std::string& name, uint32 period);
 
-        bool Create(uint32 guidlow, uint32 mapid, float x, float y, float z, float ang, uint8 animprogress, uint16 dynamicHighValue);
-        bool GenerateWaypoints(uint32 pathid, std::set<uint32>& mapids);
         void Update(uint32 update_diff, uint32 p_time) override;
         bool AddPassenger(Player* passenger);
         bool RemovePassenger(Player* passenger);
 
         typedef std::set<Player*> PlayerSet;
         PlayerSet const& GetPassengers() const { return m_passengers; }
+        uint32 MovementProgress() const { return m_timer; }
 
     private:
         struct WayPoint
@@ -60,6 +59,17 @@ class Transport : public GameObject
 
         typedef std::map<uint32, WayPoint> WayPointMap;
 
+        explicit Transport();
+        bool Create(uint32 entry);
+        bool GenerateWaypoints(uint32 pathid, std::set<uint32> &mapids);
+        void TeleportTransport(uint32 newMapid, float x, float y, float z);
+        void DoEventIfAny(WayPointMap::value_type const& node, bool departure);
+        void MoveToNextWayPoint();                          // move m_next/m_cur to next points
+
+        void SetPeriod(uint32 time) { SetUInt32Value(GAMEOBJECT_LEVEL, time); }
+        uint32 GetPeriod() const { return GetUInt32Value(GAMEOBJECT_LEVEL); }
+
+    private:
         WayPointMap::const_iterator m_curr;
         WayPointMap::const_iterator m_next;
         uint32 m_pathTime;
@@ -67,15 +77,7 @@ class Transport : public GameObject
 
         PlayerSet m_passengers;
 
-    public:
         WayPointMap m_WayPoints;
         uint32 m_nextNodeTime;
-        uint32 m_period;
-
-    private:
-        void TeleportTransport(uint32 newMapid, float x, float y, float z);
-        void UpdateForMap(Map const* map);
-        void DoEventIfAny(WayPointMap::value_type const& node, bool departure);
-        void MoveToNextWayPoint();                          // move m_next/m_cur to next points
 };
 #endif

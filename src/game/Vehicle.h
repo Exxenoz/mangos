@@ -23,6 +23,7 @@
 #include "ObjectGuid.h"
 #include "Creature.h"
 #include "Unit.h"
+#include "TransportSystem.h"
 #include "SharedDefines.h"
 
 struct VehicleEntry;

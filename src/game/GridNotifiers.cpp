@@ -173,16 +173,6 @@ void ObjectMessageDistDeliverer::Visit(CameraMapType& m)
     }
 }
 
-template<class T>
-void ObjectUpdater::Visit(GridRefManager<T>& m)
-{
-    for (typename GridRefManager<T>::iterator iter = m.begin(); iter != m.end(); ++iter)
-    {
-        WorldObject::UpdateHelper helper(iter->getSource());
-        helper.Update(i_timeDiff);
-    }
-}
-
 bool CannibalizeObjectCheck::operator()(Corpse* u)
 {
     // ignore bones
@@ -266,6 +256,3 @@ bool MaNGOS::AnyAssistCreatureInRangeCheck::operator()(Creature* u)
 
     return true;
 }
-
-template void ObjectUpdater::Visit<GameObject>(GameObjectMapType&);
-template void ObjectUpdater::Visit<DynamicObject>(DynamicObjectMapType&);
