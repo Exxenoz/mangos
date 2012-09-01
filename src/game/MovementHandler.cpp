@@ -347,7 +347,7 @@ void WorldSession::HandleForceSpeedChangeAckOpcodes(WorldPacket& recv_data)
             return;
     }
 
-    if (!_player->GetTransport() && fabs(_player->GetSpeed(move_type) - newspeed) > 0.01f)
+    if (!_player->IsBoarded() && fabs(_player->GetSpeed(move_type) - newspeed) > 0.01f)
     {
         if (_player->GetSpeed(move_type) > newspeed)        // must be greater - just correct
         {
@@ -537,23 +537,21 @@ void WorldSession::HandleMoverRelocation(MovementAndPositionInfo& movementInfo)
 
     if (Player* plMover = mover->GetTypeId() == TYPEID_PLAYER ? (Player*)mover : NULL)
     {
-        if (movementInfo.HasMovementFlag(MOVEFLAG_ONTRANSPORT))
+        if (movementInfo.HasMovementFlag(MOVEFLAG_ONTRANSPORT) && !plMover->IsBoarded())
         {
-            if (!plMover->m_transport)
+            if (Transport* transport = plMover->GetMap()->GetTransport(movementInfo.GetTransportGuid()))
             {
-                if (Transport* transport = plMover->GetMap()->GetTransport(movementInfo.GetTransportGuid()))
-                {
-                    /** It's considered that player and transport running in same thread context,
-                        so it's safe to modify transport(add passenger) */
-                    plMover->m_transport = transport;
-                    transport->AddPassenger(plMover);
-                }
+                /** It's considered that player and transport running in same thread context,
+                    so it's safe to modify transport(add passenger) */
+                transport->BoardPassenger(plMover, movementInfo.GetLocalPositionX(), movementInfo.GetLocalPositionY(),
+                            movementInfo.GetLocalPositionZ(), movementInfo.GetLocalOrientation());
             }
         }
-        else if (plMover->m_transport)               // if we were on a transport, leave
+        else if (TransportInfo* transportInfo = plMover->GetTransportInfo())
         {
-            plMover->m_transport->RemovePassenger(plMover);
-            plMover->m_transport = NULL;
+            // if we were on a mo transport, leave
+            if (transportInfo->IsOnMOTransport())
+                ((Transport*)transportInfo->GetTransport())->UnBoardPassenger(plMover);
         }
 
         if (movementInfo.HasMovementFlag(MOVEFLAG_SWIMMING) != plMover->IsInWater())

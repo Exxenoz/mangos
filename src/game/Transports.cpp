@@ -32,6 +32,12 @@
 Transport::Transport() : GameObject()
 {
     m_updateFlag = (UPDATEFLAG_TRANSPORT | UPDATEFLAG_HIGHGUID | UPDATEFLAG_HAS_POSITION | UPDATEFLAG_ROTATION);
+    m_transportBase = new TransportBase(this);
+}
+
+Transport::~Transport()
+{
+    delete m_transportBase;
 }
 
 bool Transport::Create(uint32 entry)
@@ -341,57 +347,53 @@ void Transport::MoveToNextWayPoint()
 
 void Transport::TeleportTransport(uint32 newMapid, float x, float y, float z)
 {
-    Map const* oldMap = GetMap();
-
-    for (PlayerSet::iterator itr = m_passengers.begin(); itr != m_passengers.end();)
-    {
-        PlayerSet::iterator it2 = itr;
-        ++itr;
-
-        Player* plr = *it2;
-        if (!plr)
-        {
-            m_passengers.erase(it2);
-            continue;
-        }
-
-        if (plr->isDead() && !plr->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST))
-        {
-            plr->ResurrectPlayer(1.0);
-        }
-        plr->TeleportTo(newMapid, x, y, z, GetOrientation(), TELE_TO_NOT_LEAVE_TRANSPORT);
-
-        // WorldPacket data(SMSG_811, 4);
-        // data << uint32(0);
-        // plr->GetSession()->SendPacket(&data);
-    }
-
     // we need to create and save new Map object with 'newMapid' because if not done -> lead to invalid Map object reference...
     // player far teleport would try to create same instance, but we need it NOW for transport...
     // correct me if I'm wrong O.o
     Map* newMap = sMapMgr.CreateMap(newMapid, this);
     /** Assertion will fail in case it will try to create instance map */
     MANGOS_ASSERT(newMap);
+
+    PassengerMap const passengers = m_transportBase->GetPassengers();
+    for (PassengerMap::const_iterator itr = passengers.begin(); itr != passengers.end(); ++itr)
+    {
+        MANGOS_ASSERT(itr->first);
+
+        if (itr->first->GetTypeId() == TYPEID_PLAYER)
+        {
+            Player* plr = (Player*)itr->first;
+
+            // Is this correct?
+            if (plr->isDead() && !plr->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GHOST))
+                plr->ResurrectPlayer(1.0f);
+
+            TransportInfo* transportInfo = plr->GetTransportInfo();
+
+            MANGOS_ASSERT(transportInfo);
+
+            float rx, ry;
+            m_transportBase->RotateLocalPosition(transportInfo->GetLocalPositionX(),
+                    transportInfo->GetLocalPositionY(), rx, ry);
+
+            // Teleport passenger failed
+            if (!plr->TeleportTo(newMapid, x + rx, y + ry, z + transportInfo->GetLocalPositionZ(),
+                    MapManager::NormalizeOrientation(GetOrientation() + transportInfo->GetLocalOrientation()), TELE_TO_NOT_LEAVE_TRANSPORT))
+            {
+                plr->RepopAtGraveyard(); // teleport to near graveyard if on transport, looks blizz like :)
+                UnBoardPassenger(plr);
+            }
+
+            // WorldPacket data(SMSG_811, 4);
+            // data << uint32(0);
+            // plr->GetSession()->SendPacket(&data);
+        }
+        //else
+        // ToDo: Add creature/gameobject relocation map1->map2
+    }
+
     GetMap()->Remove<GameObject>(this, false);
     Relocate(x, y, z);
     newMap->Add<GameObject>(this);
-}
-
-bool Transport::AddPassenger(Player* passenger)
-{
-    if (m_passengers.find(passenger) == m_passengers.end())
-    {
-        DETAIL_LOG("Player %s boarded transport %s.", passenger->GetName(), GetName());
-        m_passengers.insert(passenger);
-    }
-    return true;
-}
-
-bool Transport::RemovePassenger(Player* passenger)
-{
-    if (m_passengers.erase(passenger))
-        DETAIL_LOG("Player %s removed from transport %s.", passenger->GetName(), GetName());
-    return true;
 }
 
 void Transport::Update(uint32 update_diff, uint32 /*p_time*/)
@@ -402,7 +404,6 @@ void Transport::Update(uint32 update_diff, uint32 /*p_time*/)
     m_timer = WorldTimer::getMSTime() % GetPeriod();
     while (((m_timer - m_curr->first) % m_pathTime) > ((m_next->first - m_curr->first) % m_pathTime))
     {
-
         DoEventIfAny(*m_curr, true);
 
         MoveToNextWayPoint();
@@ -417,16 +418,10 @@ void Transport::Update(uint32 update_diff, uint32 /*p_time*/)
         else
         {
             GetMap()->TransportRelocation(this, m_curr->second.x, m_curr->second.y, m_curr->second.z, GetOrientation());
-        }
 
-        /*
-        for(PlayerSet::const_iterator itr = m_passengers.begin(); itr != m_passengers.end();)
-        {
-            PlayerSet::const_iterator it2 = itr;
-            ++itr;
-            //(*it2)->SetPosition( m_curr->second.x + (*it2)->GetTransOffsetX(), m_curr->second.y + (*it2)->GetTransOffsetY(), m_curr->second.z + (*it2)->GetTransOffsetZ(), (*it2)->GetTransOffsetO() );
+            // Update passenger positions
+            m_transportBase->UpdateGlobalPositions();
         }
-        */
 
         m_nextNodeTime = m_curr->first;
 
@@ -435,6 +430,36 @@ void Transport::Update(uint32 update_diff, uint32 /*p_time*/)
 
         DETAIL_FILTER_LOG(LOG_FILTER_TRANSPORT_MOVES, "%s moved to %f %f %f %d", GetName(), m_curr->second.x, m_curr->second.y, m_curr->second.z, m_curr->second.mapid);
     }
+}
+
+bool Transport::BoardPassenger(WorldObject* passenger, float lx, float ly, float lz, float lo)
+{
+    MANGOS_ASSERT(passenger);
+
+    // transport size limited
+    if (fabs(lx) > 50.0f || fabs(ly) > 50.0f || fabs(lz) > 50.0f)
+        return false;
+
+    if (passenger->IsBoarded())
+        return false;
+
+    m_transportBase->BoardPassenger(passenger, lx, ly, lz, lo, 255);
+    DETAIL_LOG("%s boarded transport %s.", passenger->GetName(), GetName());
+
+    return true;
+}
+
+bool Transport::UnBoardPassenger(WorldObject* passenger)
+{
+    MANGOS_ASSERT(passenger);
+
+    if (!passenger->IsBoarded())
+        return false;
+
+    m_transportBase->UnBoardPassenger(passenger);
+    DETAIL_LOG("%s removed from transport %s.", passenger->GetName(), GetName());
+
+    return true;
 }
 
 void Transport::DoEventIfAny(WayPointMap::value_type const& node, bool departure)

@@ -20,6 +20,7 @@
 #define TRANSPORTS_H
 
 #include "GameObject.h"
+#include "TransportSystem.h"
 
 #include <map>
 #include <set>
@@ -31,14 +32,17 @@ class Transport : public GameObject
         static Transport* Load(Map * map, uint32 entry, const std::string& name, uint32 period);
 
         void Update(uint32 update_diff, uint32 p_time) override;
-        bool AddPassenger(Player* passenger);
-        bool RemovePassenger(Player* passenger);
 
-        typedef std::set<Player*> PlayerSet;
-        PlayerSet const& GetPassengers() const { return m_passengers; }
+        bool BoardPassenger(WorldObject* passenger, float lx, float ly, float lz, float lo);
+        bool UnBoardPassenger(WorldObject* passenger);
+
+        PassengerMap const& GetPassengers() const { return m_transportBase->GetPassengers(); }
         uint32 MovementProgress() const { return m_timer; }
 
     private:
+        explicit Transport();
+        ~Transport();
+
         struct WayPoint
         {
             WayPoint() : mapid(0), x(0), y(0), z(0), teleport(false) {}
@@ -59,7 +63,6 @@ class Transport : public GameObject
 
         typedef std::map<uint32, WayPoint> WayPointMap;
 
-        explicit Transport();
         bool Create(uint32 entry);
         bool GenerateWaypoints(uint32 pathid, std::set<uint32> &mapids);
         void TeleportTransport(uint32 newMapid, float x, float y, float z);
@@ -69,15 +72,15 @@ class Transport : public GameObject
         void SetPeriod(uint32 time) { SetUInt32Value(GAMEOBJECT_LEVEL, time); }
         uint32 GetPeriod() const { return GetUInt32Value(GAMEOBJECT_LEVEL); }
 
-    private:
         WayPointMap::const_iterator m_curr;
         WayPointMap::const_iterator m_next;
+
         uint32 m_pathTime;
         uint32 m_timer;
 
-        PlayerSet m_passengers;
-
         WayPointMap m_WayPoints;
         uint32 m_nextNodeTime;
+
+        TransportBase* m_transportBase;
 };
 #endif
