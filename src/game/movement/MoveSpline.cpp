@@ -168,6 +168,7 @@ namespace Movement
         m_Id = args.splineId;
         point_Idx_offset = args.path_Idx_offset;
         initialOrientation = args.initialOrientation;
+        transportGuid = args.transportGuid;
 
         time_passed = 0;
         vertical_acceleration = 0.f;
@@ -189,7 +190,7 @@ namespace Movement
     }
 
     MoveSpline::MoveSpline() : m_Id(0), time_passed(0),
-        vertical_acceleration(0.f), initialOrientation(0.f), effect_start_time(0), point_Idx(0), point_Idx_offset(0)
+        vertical_acceleration(0.f), initialOrientation(0.f), effect_start_time(0), point_Idx(0), point_Idx_offset(0), transportGuid(ObjectGuid())
     {
         splineflags.done = true;
     }
@@ -294,6 +295,7 @@ namespace Movement
         else if (splineflags.final_point)
             str << "facing  point: " << facing.f.x << " " << facing.f.y << " " << facing.f.z;
         str << std::endl;
+        str << "transportGuid: " << transportGuid.GetString() << std::endl;
         str << "time passed: " << time_passed << std::endl;
         str << "total  time: " << Duration() << std::endl;
         str << "spline point Id: " << point_Idx << std::endl;

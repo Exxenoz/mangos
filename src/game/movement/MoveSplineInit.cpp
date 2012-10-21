@@ -60,11 +60,15 @@ namespace Movement
 
         // If boarded use current local position
         if (transportInfo)
+        {
+            args.transportGuid = transportInfo->GetTransportGuid();
             transportInfo->GetLocalPosition(real_position.x, real_position.y, real_position.z, real_position.orientation);
+        }
 
         // there is a big chane that current position is unknown if current state is not finalized, need compute it
         // this also allows calculate spline position and update map position in much greater intervals
-        if (!move_spline.Finalized() && !transportInfo)
+        // this is only possible to use when both positions are in the same coordinate system
+        if (!move_spline.Finalized() && args.transportGuid == move_spline.GetTransportGuid())
             real_position = move_spline.ComputePosition();
 
         if (args.path.empty())

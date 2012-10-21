@@ -67,6 +67,7 @@ namespace Movement
             int32           effect_start_time;
             int32           point_Idx;
             int32           point_Idx_offset;
+            ObjectGuid      transportGuid;
 
             void init_spline(const MoveSplineInitArgs& args);
         protected:
@@ -115,6 +116,7 @@ namespace Movement
             uint32 GetId() const { return m_Id;}
             bool Finalized() const { return splineflags.done; }
             bool isCyclic() const { return splineflags.cyclic;}
+            ObjectGuid GetTransportGuid() const { return transportGuid;}
             const Vector3 FinalDestination() const { return Initialized() ? spline.getPoint(spline.last()) : Vector3();}
             const Vector3 CurrentDestination() const { return Initialized() ? spline.getPoint(point_Idx + 1) : Vector3();}
             int32 currentPathIdx() const;
