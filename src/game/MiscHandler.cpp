@@ -1464,7 +1464,7 @@ void WorldSession::HandleMoveSetCanFlyAckOpcode(WorldPacket& recv_data)
     // recv_data.hexlike();
 
     ObjectGuid guid;
-    MovementInfo movementInfo;
+    MovementAndPositionInfo movementInfo;
 
     recv_data >> guid.ReadAsPacked();
     recv_data >> Unused<uint32>();                          // unk
