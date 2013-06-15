@@ -46,11 +46,11 @@
 #include "TransportMgr.h"
 
 GameObject::GameObject() : WorldObject(),
-    m_transportBase(NULL)
     loot(this),
     m_model(NULL),
     m_goInfo(NULL),
-    m_displayInfo(NULL)
+    m_displayInfo(NULL),
+    m_transportBase(NULL)
 {
     m_objectType |= TYPEMASK_GAMEOBJECT;
     m_objectTypeId = TYPEID_GAMEOBJECT;

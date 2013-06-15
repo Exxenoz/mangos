@@ -17,7 +17,7 @@
  */
 
 #include "TransportMgr.h"
-#include "Policies/SingletonImp.h"
+#include "Policies/Singleton.h"
 #include "TransportSystem.h"
 #include "ProgressBar.h"
 #include "movement/spline.h"
